@@ -1,0 +1,952 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>AR Drawing Assistant</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <link rel="manifest" href="manifest.json">
+    <style>
+        :root {
+            --primary: #6366f1;
+            --primary-dark: #4f46e5;
+            --secondary: #f59e0b;
+        }
+        
+        body {
+            touch-action: manipulation;
+            overscroll-behavior-y: none;
+            -webkit-tap-highlight-color: transparent;
+        }
+        
+        #cameraView, #overlayImage {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            object-fit: cover;
+        }
+        
+        #cameraContainer {
+            position: relative;
+            width: 100%;
+            height: 100vh;
+            background-color: #000;
+            overflow: hidden;
+        }
+        
+        .slider-container {
+            width: 100%;
+        }
+        
+        .slider {
+            -webkit-appearance: none;
+            width: 100%;
+            height: 6px;
+            border-radius: 3px;
+            background: #e5e7eb;
+            outline: none;
+        }
+        
+        .slider::-webkit-slider-thumb {
+            -webkit-appearance: none;
+            appearance: none;
+            width: 20px;
+            height: 20px;
+            border-radius: 50%;
+            background: var(--primary);
+            cursor: pointer;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.2);
+        }
+        
+        .bottom-nav {
+            position: fixed;
+            bottom: 0;
+            left: 0;
+            right: 0;
+            background: white;
+            box-shadow: 0 -2px 10px rgba(0,0,0,0.1);
+            z-index: 100;
+        }
+        
+        .nav-item {
+            flex: 1;
+            text-align: center;
+            padding: 12px 0;
+            color: #6b7280;
+        }
+        
+        .nav-item.active {
+            color: var(--primary);
+        }
+        
+        .modal {
+            position: fixed;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            background: rgba(0,0,0,0.8);
+            z-index: 1000;
+            display: none;
+            align-items: center;
+            justify-content: center;
+            opacity: 0;
+            transition: opacity 0.3s;
+        }
+        
+        .modal-content {
+            background: white;
+            border-radius: 16px;
+            width: 90%;
+            max-width: 400px;
+            max-height: 90vh;
+            overflow-y: auto;
+            transform: translateY(20px);
+            transition: transform 0.3s;
+        }
+        
+        .modal.show {
+            display: flex;
+            opacity: 1;
+        }
+        
+        .modal.show .modal-content {
+            transform: translateY(0);
+        }
+        
+        .btn {
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            padding: 12px 16px;
+            border-radius: 12px;
+            font-weight: 500;
+            transition: all 0.2s;
+        }
+        
+        .btn-primary {
+            background: var(--primary);
+            color: white;
+        }
+        
+        .btn-primary:hover {
+            background: var(--primary-dark);
+        }
+        
+        .btn-secondary {
+            background: var(--secondary);
+            color: white;
+        }
+        
+        .btn-outline {
+            background: white;
+            border: 1px solid #e5e7eb;
+            color: #4b5563;
+        }
+        
+        .btn-icon {
+            width: 48px;
+            height: 48px;
+            border-radius: 50%;
+            background: white;
+            box-shadow: 0 4px 6px rgba(0,0,0,0.1);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            position: absolute;
+            z-index: 10;
+        }
+        
+        .btn-icon.camera-switch {
+            top: 20px;
+            right: 20px;
+        }
+        
+        .btn-icon.flash {
+            top: 80px;
+            right: 20px;
+        }
+        
+        .btn-icon.close {
+            top: 20px;
+            left: 20px;
+        }
+        
+        .btn-icon.settings {
+            bottom: 80px;
+            left: 20px;
+        }
+        
+        .btn-icon.capture {
+            bottom: 20px;
+            left: 50%;
+            transform: translateX(-50%);
+        }
+        
+        .grid-actions {
+            display: grid;
+            grid-template-columns: repeat(3, 1fr);
+            gap: 8px;
+        }
+        
+        .action-btn {
+            background: white;
+            border-radius: 12px;
+            padding: 12px;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.05);
+        }
+        
+        .action-icon {
+            width: 36px;
+            height: 36px;
+            border-radius: 50%;
+            background: #f3f4f6;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            margin-bottom: 8px;
+            color: var(--primary);
+        }
+        
+        .action-label {
+            font-size: 12px;
+            color: #4b5563;
+        }
+        
+        .drawing-guide {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            pointer-events: none;
+            z-index: 5;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+        
+        .guide-inner {
+            width: 90%;
+            height: 90%;
+            border: 2px dashed rgba(255,255,255,0.5);
+            border-radius: 8px;
+        }
+        
+        /* Animation for tutorial */
+        @keyframes pulse {
+            0% { transform: scale(1); }
+            50% { transform: scale(1.05); }
+            100% { transform: scale(1); }
+        }
+        
+        .pulse {
+            animation: pulse 1.5s infinite;
+        }
+    </style>
+</head>
+<body class="bg-gray-100">
+    <!-- Main Camera View -->
+    <div id="cameraContainer">
+        <video id="cameraView" autoplay playsinline></video>
+        <img id="overlayImage" style="display: none;">
+        
+        <div class="drawing-guide">
+            <div class="guide-inner"></div>
+        </div>
+        
+        <!-- Camera Controls -->
+        <button id="switchCamera" class="btn-icon camera-switch">
+            <i class="fas fa-camera-retro text-gray-700"></i>
+        </button>
+        
+        <button id="toggleFlash" class="btn-icon flash">
+            <i class="fas fa-bolt text-gray-700"></i>
+        </button>
+        
+        <button id="openSettings" class="btn-icon settings">
+            <i class="fas fa-sliders-h text-gray-700"></i>
+        </button>
+        
+        <button id="captureBtn" class="btn-icon capture pulse">
+            <i class="fas fa-camera text-gray-700 text-xl"></i>
+        </button>
+        
+        <div id="noCameraMessage" class="absolute inset-0 flex items-center justify-center bg-black text-white p-4" style="display: none;">
+            <div class="text-center max-w-xs">
+                <i class="fas fa-camera-slash text-4xl mb-4"></i>
+                <p class="text-xl font-bold mb-2">Camera Access Required</p>
+                <p class="mb-4">Please allow camera access to use this feature.</p>
+                <button id="retryCamera" class="btn btn-primary w-full">
+                    <i class="fas fa-sync-alt mr-2"></i> Try Again
+                </button>
+            </div>
+        </div>
+    </div>
+    
+    <!-- Bottom Navigation -->
+    <div class="bottom-nav">
+        <div class="flex">
+            <div id="navHome" class="nav-item active">
+                <i class="fas fa-home block text-xl mb-1"></i>
+                <span class="text-xs">Home</span>
+            </div>
+            <div id="navGallery" class="nav-item">
+                <i class="fas fa-images block text-xl mb-1"></i>
+                <span class="text-xs">Gallery</span>
+            </div>
+            <div id="navTutorial" class="nav-item">
+                <i class="fas fa-question-circle block text-xl mb-1"></i>
+                <span class="text-xs">Tutorial</span>
+            </div>
+            <div id="navProfile" class="nav-item">
+                <i class="fas fa-user block text-xl mb-1"></i>
+                <span class="text-xs">Profile</span>
+            </div>
+        </div>
+    </div>
+    
+    <!-- Settings Modal -->
+    <div id="settingsModal" class="modal">
+        <div class="modal-content p-6">
+            <button id="closeSettings" class="btn-icon close">
+                <i class="fas fa-times text-gray-700"></i>
+            </button>
+            
+            <h2 class="text-xl font-bold mb-6 text-center">
+                <i class="fas fa-sliders-h mr-2 text-indigo-500"></i> Drawing Settings
+            </h2>
+            
+            <!-- Upload Section -->
+            <div class="mb-6">
+                <h3 class="text-lg font-semibold mb-3 flex items-center">
+                    <i class="fas fa-image mr-2 text-indigo-500"></i> Reference Image
+                </h3>
+                <div class="border-2 border-dashed border-gray-300 rounded-lg p-4 text-center mb-3">
+                    <input type="file" id="imageUpload" accept="image/*" class="hidden">
+                    <label for="imageUpload" class="cursor-pointer">
+                        <div class="flex flex-col items-center justify-center py-2">
+                            <i class="fas fa-cloud-upload-alt text-3xl text-indigo-400 mb-2"></i>
+                            <p class="text-gray-600">Tap to upload an image</p>
+                        </div>
+                    </label>
+                </div>
+                <div id="fileNameDisplay" class="text-sm text-gray-600 mt-2 truncate text-center"></div>
+            </div>
+            
+            <!-- Image Controls -->
+            <div id="imageControls" style="display: none;">
+                <h3 class="text-lg font-semibold mb-3 flex items-center">
+                    <i class="fas fa-adjust mr-2 text-indigo-500"></i> Adjust Image
+                </h3>
+                
+                <div class="mb-4">
+                    <div class="flex justify-between mb-1">
+                        <span class="text-sm font-medium text-gray-700">Opacity</span>
+                        <span id="opacityValue" class="text-sm text-gray-500">50%</span>
+                    </div>
+                    <div class="slider-container">
+                        <input type="range" min="10" max="100" value="50" class="slider" id="opacitySlider">
+                    </div>
+                </div>
+                
+                <div class="mb-4">
+                    <div class="flex justify-between mb-1">
+                        <span class="text-sm font-medium text-gray-700">Size</span>
+                        <span id="sizeValue" class="text-sm text-gray-500">100%</span>
+                    </div>
+                    <div class="slider-container">
+                        <input type="range" min="50" max="150" value="100" class="slider" id="sizeSlider">
+                    </div>
+                </div>
+                
+                <div class="grid-actions mb-4">
+                    <button id="flipHorizontal" class="action-btn">
+                        <div class="action-icon">
+                            <i class="fas fa-arrows-alt-h"></i>
+                        </div>
+                        <span class="action-label">Flip Horizontal</span>
+                    </button>
+                    
+                    <button id="flipVertical" class="action-btn">
+                        <div class="action-icon">
+                            <i class="fas fa-arrows-alt-v"></i>
+                        </div>
+                        <span class="action-label">Flip Vertical</span>
+                    </button>
+                    
+                    <button id="rotateImage" class="action-btn">
+                        <div class="action-icon">
+                            <i class="fas fa-redo"></i>
+                        </div>
+                        <span class="action-label">Rotate</span>
+                    </button>
+                </div>
+                
+                <button id="clearImage" class="btn btn-outline w-full mb-4">
+                    <i class="fas fa-trash-alt mr-2"></i> Remove Image
+                </button>
+            </div>
+            
+            <!-- Drawing Tools -->
+            <div class="mb-6">
+                <h3 class="text-lg font-semibold mb-3 flex items-center">
+                    <i class="fas fa-pencil-alt mr-2 text-indigo-500"></i> Drawing Tools
+                </h3>
+                
+                <div class="grid-actions">
+                    <button class="action-btn">
+                        <div class="action-icon">
+                            <i class="fas fa-ruler"></i>
+                        </div>
+                        <span class="action-label">Grid</span>
+                    </button>
+                    
+                    <button class="action-btn">
+                        <div class="action-icon">
+                            <i class="fas fa-bullseye"></i>
+                        </div>
+                        <span class="action-label">Crosshair</span>
+                    </button>
+                    
+                    <button class="action-btn">
+                        <div class="action-icon">
+                            <i class="fas fa-lightbulb"></i>
+                        </div>
+                        <span class="action-label">Light</span>
+                    </button>
+                </div>
+            </div>
+            
+            <button id="saveSettings" class="btn btn-primary w-full">
+                <i class="fas fa-check mr-2"></i> Apply Settings
+            </button>
+        </div>
+    </div>
+    
+    <!-- Tutorial Modal -->
+    <div id="tutorialModal" class="modal">
+        <div class="modal-content p-6">
+            <button id="closeTutorial" class="btn-icon close">
+                <i class="fas fa-times text-gray-700"></i>
+            </button>
+            
+            <h2 class="text-xl font-bold mb-6 text-center">
+                <i class="fas fa-question-circle mr-2 text-indigo-500"></i> How to Use
+            </h2>
+            
+            <div class="mb-6">
+                <div class="flex items-start mb-4">
+                    <div class="bg-indigo-100 rounded-full w-8 h-8 flex items-center justify-center mr-3 flex-shrink-0">
+                        <span class="text-indigo-700 font-bold">1</span>
+                    </div>
+                    <div>
+                        <h4 class="font-semibold text-gray-800">Upload Your Image</h4>
+                        <p class="text-gray-600 text-sm">Tap the settings icon and upload the image you want to trace.</p>
+                    </div>
+                </div>
+                
+                <div class="flex items-start mb-4">
+                    <div class="bg-indigo-100 rounded-full w-8 h-8 flex items-center justify-center mr-3 flex-shrink-0">
+                        <span class="text-indigo-700 font-bold">2</span>
+                    </div>
+                    <div>
+                        <h4 class="font-semibold text-gray-800">Adjust the Overlay</h4>
+                        <p class="text-gray-600 text-sm">Use the sliders to change opacity and size until it matches your paper.</p>
+                    </div>
+                </div>
+                
+                <div class="flex items-start mb-4">
+                    <div class="bg-indigo-100 rounded-full w-8 h-8 flex items-center justify-center mr-3 flex-shrink-0">
+                        <span class="text-indigo-700 font-bold">3</span>
+                    </div>
+                    <div>
+                        <h4 class="font-semibold text-gray-800">Start Tracing</h4>
+                        <p class="text-gray-600 text-sm">Place your device above your drawing paper and trace the image.</p>
+                    </div>
+                </div>
+                
+                <div class="flex items-start">
+                    <div class="bg-indigo-100 rounded-full w-8 h-8 flex items-center justify-center mr-3 flex-shrink-0">
+                        <span class="text-indigo-700 font-bold">4</span>
+                    </div>
+                    <div>
+                        <h4 class="font-semibold text-gray-800">Save Your Work</h4>
+                        <p class="text-gray-600 text-sm">Use the camera button to capture your progress.</p>
+                    </div>
+                </div>
+            </div>
+            
+            <div class="bg-indigo-50 p-4 rounded-lg mb-6">
+                <h4 class="font-semibold text-indigo-800 mb-2 flex items-center">
+                    <i class="fas fa-lightbulb mr-2"></i> Pro Tip
+                </h4>
+                <p class="text-indigo-700 text-sm">For best results, work in a well-lit area and use a phone stand or tripod to keep your device steady.</p>
+            </div>
+            
+            <button id="gotItBtn" class="btn btn-primary w-full">
+                <i class="fas fa-thumbs-up mr-2"></i> Got It!
+            </button>
+        </div>
+    </div>
+    
+    <!-- Gallery Modal -->
+    <div id="galleryModal" class="modal">
+        <div class="modal-content p-6">
+            <button id="closeGallery" class="btn-icon close">
+                <i class="fas fa-times text-gray-700"></i>
+            </button>
+            
+            <h2 class="text-xl font-bold mb-6 text-center">
+                <i class="fas fa-images mr-2 text-indigo-500"></i> My Gallery
+            </h2>
+            
+            <div class="grid grid-cols-2 gap-4 mb-6">
+                <!-- Sample gallery items -->
+                <div class="bg-gray-100 rounded-lg aspect-square overflow-hidden">
+                    <img src="https://via.placeholder.com/300" class="w-full h-full object-cover">
+                </div>
+                <div class="bg-gray-100 rounded-lg aspect-square overflow-hidden">
+                    <img src="https://via.placeholder.com/300" class="w-full h-full object-cover">
+                </div>
+                <div class="bg-gray-100 rounded-lg aspect-square overflow-hidden">
+                    <img src="https://via.placeholder.com/300" class="w-full h-full object-cover">
+                </div>
+                <div class="bg-gray-100 rounded-lg aspect-square overflow-hidden">
+                    <img src="https://via.placeholder.com/300" class="w-full h-full object-cover">
+                </div>
+            </div>
+            
+            <button id="addToGallery" class="btn btn-secondary w-full">
+                <i class="fas fa-plus mr-2"></i> Add New Drawing
+            </button>
+        </div>
+    </div>
+    
+    <!-- Profile Modal -->
+    <div id="profileModal" class="modal">
+        <div class="modal-content p-6">
+            <button id="closeProfile" class="btn-icon close">
+                <i class="fas fa-times text-gray-700"></i>
+            </button>
+            
+            <div class="flex flex-col items-center mb-6">
+                <div class="w-20 h-20 rounded-full bg-indigo-100 flex items-center justify-center mb-3">
+                    <i class="fas fa-user text-3xl text-indigo-500"></i>
+                </div>
+                <h2 class="text-xl font-bold">Guest User</h2>
+                <p class="text-gray-500 text-sm">Free Plan</p>
+            </div>
+            
+            <div class="space-y-3 mb-6">
+                <a href="#" class="flex items-center p-3 rounded-lg hover:bg-gray-100">
+                    <div class="w-8 h-8 rounded-full bg-indigo-100 flex items-center justify-center mr-3">
+                        <i class="fas fa-user-edit text-indigo-500"></i>
+                    </div>
+                    <span>Edit Profile</span>
+                </a>
+                
+                <a href="#" class="flex items-center p-3 rounded-lg hover:bg-gray-100">
+                    <div class="w-8 h-8 rounded-full bg-indigo-100 flex items-center justify-center mr-3">
+                        <i class="fas fa-star text-indigo-500"></i>
+                    </div>
+                    <span>Upgrade to Pro</span>
+                </a>
+                
+                <a href="#" class="flex items-center p-3 rounded-lg hover:bg-gray-100">
+                    <div class="w-8 h-8 rounded-full bg-indigo-100 flex items-center justify-center mr-3">
+                        <i class="fas fa-cog text-indigo-500"></i>
+                    </div>
+                    <span>Settings</span>
+                </a>
+                
+                <a href="#" class="flex items-center p-3 rounded-lg hover:bg-gray-100">
+                    <div class="w-8 h-8 rounded-full bg-indigo-100 flex items-center justify-center mr-3">
+                        <i class="fas fa-question-circle text-indigo-500"></i>
+                    </div>
+                    <span>Help & Support</span>
+                </a>
+            </div>
+            
+            <button id="logoutBtn" class="btn btn-outline w-full">
+                <i class="fas fa-sign-out-alt mr-2"></i> Log Out
+            </button>
+        </div>
+    </div>
+    
+    <!-- Capture Preview Modal -->
+    <div id="previewModal" class="modal">
+        <div class="modal-content p-6">
+            <button id="closePreview" class="btn-icon close">
+                <i class="fas fa-times text-gray-700"></i>
+            </button>
+            
+            <h2 class="text-xl font-bold mb-4 text-center">Capture Preview</h2>
+            
+            <div class="bg-gray-100 rounded-lg mb-4 overflow-hidden">
+                <img id="capturePreview" src="" class="w-full">
+            </div>
+            
+            <div class="flex space-x-3">
+                <button id="retakeBtn" class="btn btn-outline flex-1">
+                    <i class="fas fa-redo mr-2"></i> Retake
+                </button>
+                <button id="saveCaptureBtn" class="btn btn-primary flex-1">
+                    <i class="fas fa-save mr-2"></i> Save
+                </button>
+            </div>
+        </div>
+    </div>
+    
+    <script>
+        document.addEventListener('DOMContentLoaded', function() {
+            // DOM Elements
+            const cameraView = document.getElementById('cameraView');
+            const overlayImage = document.getElementById('overlayImage');
+            const imageUpload = document.getElementById('imageUpload');
+            const fileNameDisplay = document.getElementById('fileNameDisplay');
+            const imageControls = document.getElementById('imageControls');
+            const opacitySlider = document.getElementById('opacitySlider');
+            const sizeSlider = document.getElementById('sizeSlider');
+            const opacityValue = document.getElementById('opacityValue');
+            const sizeValue = document.getElementById('sizeValue');
+            const flipHorizontal = document.getElementById('flipHorizontal');
+            const flipVertical = document.getElementById('flipVertical');
+            const rotateImage = document.getElementById('rotateImage');
+            const clearImage = document.getElementById('clearImage');
+            const switchCamera = document.getElementById('switchCamera');
+            const toggleFlash = document.getElementById('toggleFlash');
+            const noCameraMessage = document.getElementById('noCameraMessage');
+            const retryCamera = document.getElementById('retryCamera');
+            const openSettings = document.getElementById('openSettings');
+            const closeSettings = document.getElementById('closeSettings');
+            const saveSettings = document.getElementById('saveSettings');
+            const settingsModal = document.getElementById('settingsModal');
+            const navHome = document.getElementById('navHome');
+            const navGallery = document.getElementById('navGallery');
+            const navTutorial = document.getElementById('navTutorial');
+            const navProfile = document.getElementById('navProfile');
+            const galleryModal = document.getElementById('galleryModal');
+            const closeGallery = document.getElementById('closeGallery');
+            const tutorialModal = document.getElementById('tutorialModal');
+            const closeTutorial = document.getElementById('closeTutorial');
+            const gotItBtn = document.getElementById('gotItBtn');
+            const profileModal = document.getElementById('profileModal');
+            const closeProfile = document.getElementById('closeProfile');
+            const captureBtn = document.getElementById('captureBtn');
+            const previewModal = document.getElementById('previewModal');
+            const capturePreview = document.getElementById('capturePreview');
+            const closePreview = document.getElementById('closePreview');
+            const retakeBtn = document.getElementById('retakeBtn');
+            const saveCaptureBtn = document.getElementById('saveCaptureBtn');
+            const addToGallery = document.getElementById('addToGallery');
+
+            // State variables
+            let stream = null;
+            let facingMode = 'environment'; // Default to rear camera
+            let flashOn = false;
+            let imageScale = 1;
+            let imageFlipH = 1;
+            let imageFlipV = 1;
+            let rotationAngle = 0;
+            let currentImage = null;
+            let currentTab = 'home';
+
+            // Initialize camera
+            function initCamera() {
+                const constraints = {
+                    video: {
+                        facingMode: facingMode,
+                        width: { ideal: 1920 },
+                        height: { ideal: 1080 }
+                    }
+                };
+
+                navigator.mediaDevices.getUserMedia(constraints)
+                    .then(function(s) {
+                        stream = s;
+                        cameraView.srcObject = stream;
+                        noCameraMessage.style.display = 'none';
+                        
+                        // Try to enable torch if available
+                        if ('torch' in stream.getVideoTracks()[0].getSettings()) {
+                            toggleFlash.style.display = 'flex';
+                        } else {
+                            toggleFlash.style.display = 'none';
+                        }
+                    })
+                    .catch(function(err) {
+                        console.error("Camera error: ", err);
+                        noCameraMessage.style.display = 'flex';
+                    });
+            }
+
+            // Switch between front and back camera
+            switchCamera.addEventListener('click', function() {
+                if (stream) {
+                    stream.getTracks().forEach(track => track.stop());
+                }
+                
+                facingMode = facingMode === 'user' ? 'environment' : 'user';
+                initCamera();
+            });
+
+            // Toggle flash (if supported)
+            toggleFlash.addEventListener('click', function() {
+                if (!stream) return;
+                
+                const track = stream.getVideoTracks()[0];
+                if ('torch' in track.getSettings()) {
+                    flashOn = !flashOn;
+                    track.applyConstraints({
+                        advanced: [{ torch: flashOn }]
+                    }).then(() => {
+                        toggleFlash.innerHTML = flashOn ? 
+                            '<i class="fas fa-bolt text-yellow-400"></i>' : 
+                            '<i class="fas fa-bolt text-gray-700"></i>';
+                    });
+                }
+            });
+
+            // Handle image upload
+            imageUpload.addEventListener('change', function(e) {
+                if (e.target.files && e.target.files[0]) {
+                    const reader = new FileReader();
+                    
+                    reader.onload = function(event) {
+                        overlayImage.src = event.target.result;
+                        overlayImage.style.display = 'block';
+                        currentImage = event.target.result;
+                        
+                        // Show file name
+                        fileNameDisplay.textContent = e.target.files[0].name;
+                        
+                        // Show image controls
+                        imageControls.style.display = 'block';
+                        
+                        // Reset transforms
+                        imageScale = 1;
+                        imageFlipH = 1;
+                        imageFlipV = 1;
+                        rotationAngle = 0;
+                        sizeSlider.value = 100;
+                        updateImageTransform();
+                    };
+                    
+                    reader.readAsDataURL(e.target.files[0]);
+                }
+            });
+
+            // Update image opacity
+            opacitySlider.addEventListener('input', function() {
+                const opacity = this.value / 100;
+                overlayImage.style.opacity = opacity;
+                opacityValue.textContent = `${this.value}%`;
+            });
+
+            // Update image size
+            sizeSlider.addEventListener('input', function() {
+                imageScale = this.value / 100;
+                sizeValue.textContent = `${this.value}%`;
+                updateImageTransform();
+            });
+
+            // Flip image horizontally
+            flipHorizontal.addEventListener('click', function() {
+                imageFlipH *= -1;
+                updateImageTransform();
+            });
+
+            // Flip image vertically
+            flipVertical.addEventListener('click', function() {
+                imageFlipV *= -1;
+                updateImageTransform();
+            });
+
+            // Rotate image
+            rotateImage.addEventListener('click', function() {
+                rotationAngle = (rotationAngle + 90) % 360;
+                updateImageTransform();
+            });
+
+            // Clear image
+            clearImage.addEventListener('click', function() {
+                overlayImage.style.display = 'none';
+                overlayImage.src = '';
+                currentImage = null;
+                fileNameDisplay.textContent = '';
+                imageControls.style.display = 'none';
+            });
+
+            // Apply all image transforms
+            function updateImageTransform() {
+                overlayImage.style.transform = `scale(${imageScale}) scaleX(${imageFlipH}) scaleY(${imageFlipV}) rotate(${rotationAngle}deg)`;
+            }
+
+            // Open settings modal
+            openSettings.addEventListener('click', function() {
+                settingsModal.classList.add('show');
+            });
+
+            // Close settings modal
+            closeSettings.addEventListener('click', function() {
+                settingsModal.classList.remove('show');
+            });
+
+            // Save settings
+            saveSettings.addEventListener('click', function() {
+                settingsModal.classList.remove('show');
+            });
+
+            // Retry camera
+            retryCamera.addEventListener('click', function() {
+                initCamera();
+            });
+
+            // Navigation handlers
+            function setActiveTab(tab) {
+                // Reset all tabs
+                document.querySelectorAll('.nav-item').forEach(item => {
+                    item.classList.remove('active');
+                });
+                
+                // Set active tab
+                currentTab = tab;
+                switch(tab) {
+                    case 'home':
+                        navHome.classList.add('active');
+                        break;
+                    case 'gallery':
+                        navGallery.classList.add('active');
+                        galleryModal.classList.add('show');
+                        break;
+                    case 'tutorial':
+                        navTutorial.classList.add('active');
+                        tutorialModal.classList.add('show');
+                        break;
+                    case 'profile':
+                        navProfile.classList.add('active');
+                        profileModal.classList.add('show');
+                        break;
+                }
+            }
+
+            navHome.addEventListener('click', () => setActiveTab('home'));
+            navGallery.addEventListener('click', () => setActiveTab('gallery'));
+            navTutorial.addEventListener('click', () => setActiveTab('tutorial'));
+            navProfile.addEventListener('click', () => setActiveTab('profile'));
+
+            // Close modals
+            closeGallery.addEventListener('click', () => galleryModal.classList.remove('show'));
+            closeTutorial.addEventListener('click', () => tutorialModal.classList.remove('show'));
+            closeProfile.addEventListener('click', () => profileModal.classList.remove('show'));
+            gotItBtn.addEventListener('click', () => tutorialModal.classList.remove('show'));
+
+            // Capture image
+            captureBtn.addEventListener('click', function() {
+                if (!stream) return;
+                
+                // Create canvas to capture the current view
+                const canvas = document.createElement('canvas');
+                canvas.width = cameraView.videoWidth;
+                canvas.height = cameraView.videoHeight;
+                const ctx = canvas.getContext('2d');
+                
+                // Draw camera view
+                ctx.drawImage(cameraView, 0, 0, canvas.width, canvas.height);
+                
+                // If there's an overlay image, draw it too
+                if (currentImage) {
+                    ctx.globalAlpha = parseFloat(overlayImage.style.opacity || '0.5');
+                    ctx.drawImage(overlayImage, 
+                        (canvas.width - overlayImage.width * imageScale) / 2,
+                        (canvas.height - overlayImage.height * imageScale) / 2,
+                        overlayImage.width * imageScale,
+                        overlayImage.height * imageScale
+                    );
+                }
+                
+                // Show preview
+                capturePreview.src = canvas.toDataURL('image/png');
+                previewModal.classList.add('show');
+                
+                // Remove pulse animation after first capture
+                captureBtn.classList.remove('pulse');
+            });
+
+            // Close preview
+            closePreview.addEventListener('click', () => previewModal.classList.remove('show'));
+            retakeBtn.addEventListener('click', () => previewModal.classList.remove('show'));
+            
+            // Save capture
+            saveCaptureBtn.addEventListener('click', function() {
+                // In a real app, you would save the image to storage
+                // For this demo, we'll just show a toast notification
+                showToast('Drawing saved to gallery!');
+                previewModal.classList.remove('show');
+            });
+
+            // Add to gallery
+            addToGallery.addEventListener('click', function() {
+                showToast('New drawing added to gallery!');
+                galleryModal.classList.remove('show');
+            });
+
+            // Show toast notification
+            function showToast(message) {
+                const toast = document.createElement('div');
+                toast.className = 'fixed bottom-20 left-1/2 transform -translate-x-1/2 bg-gray-800 text-white px-4 py-2 rounded-lg shadow-lg text-sm';
+                toast.textContent = message;
+                document.body.appendChild(toast);
+                
+                setTimeout(() => {
+                    toast.remove();
+                }, 3000);
+            }
+
+            // Handle orientation changes
+            window.addEventListener('orientationchange', function() {
+                // Reinitialize camera to adjust to new orientation
+                if (stream) {
+                    stream.getTracks().forEach(track => track.stop());
+                }
+                initCamera();
+            });
+
+            // Start with camera initialization
+            initCamera();
+
+            // Make sure to stop camera when page is unloaded
+            window.addEventListener('beforeunload', function() {
+                if (stream) {
+                    stream.getTracks().forEach(track => track.stop());
+                }
+            });
+
+            // Add PWA install prompt
+            let deferredPrompt;
+            
+            window.addEventListener('beforeinstallprompt', (e) => {
+                // Prevent the mini-infobar from appearing on mobile
+                e.preventDefault();
+                // Stash the event so it can be triggered later
+                deferredPrompt = e;
+                // Show custom install button
+                showInstallPrompt();
+            });
+            
+            function showInstallPrompt() {
+                // You could show a custom install button here
+                console.log('App can be installed');
+            }
+        });
+    </script>
+</body>
+</html>
